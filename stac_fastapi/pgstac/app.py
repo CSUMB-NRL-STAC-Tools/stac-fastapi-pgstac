@@ -9,7 +9,8 @@ import os
 from contextlib import asynccontextmanager
 
 from brotli_asgi import BrotliMiddleware
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.middleware import CORSMiddleware, ProxyHeaderMiddleware
 from stac_fastapi.api.models import (
@@ -46,6 +47,8 @@ from stac_fastapi.pgstac.extensions import QueryExtension
 from stac_fastapi.pgstac.extensions.filter import FiltersClient
 from stac_fastapi.pgstac.transactions import BulkTransactionsClient, TransactionsClient
 from stac_fastapi.pgstac.types.search import PgstacSearch
+
+from stac_catalog import parser, gather_reports, db_util
 
 settings = Settings()
 
@@ -192,6 +195,50 @@ api = StacApi(
 )
 app = api.app
 
+# --- START CUSTOM ENDPOINTS ---
+# Create a new FastAPI APIRouter for your custom endpoints
+custom_router = APIRouter(
+    prefix="/parse",  # e.g., /custom/my_endpoint
+    tags=["My Custom Endpoints"], # For documentation in /docs
+)
+
+# Define a Pydantic model for your request body (optional, but good practice for POST/PUT)
+class URLPostRequest(BaseModel):
+    url: str
+
+# Define a simple GET endpoint
+@custom_router.post("/file")
+async def parse_report(request_body: URLPostRequest):
+    url = request_body.url
+    filename = parser.get_filename_from_url(url)
+    file_content = gather_reports.get_file_content(url)
+    dropsonde_report = parser.parse_temp_drop(file_content, filename)
+    stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report, url)
+    print(f"STAC Item ID: {stac_item.id}")
+    print(f"STAC Item Properties: {stac_item.properties}")
+    db_util.add_item_to_catlog(stac_item)
+    return {"stac_item_id": stac_item.id, "detail": "STAC item added to the catalog successfully."}
+
+def process_archive(url):
+    for item_url in (gather_reports.iter_urls_from_archive_page(url)):
+        filename = parser.get_filename_from_url(item_url)
+        file_content = gather_reports.get_file_content(item_url)
+        dropsonde_report = parser.parse_temp_drop(file_content, filename)
+        stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report, item_url)
+        print(f"STAC Item ID: {stac_item.id}")
+        print(f"STAC Item Properties: {stac_item.properties}")
+        db_util.add_item_to_catlog(stac_item)
+
+@custom_router.post("/archive")
+async def parse_report(request_body: URLPostRequest, background_tasks: BackgroundTasks):
+    url = request_body.url
+    background_tasks.add_task(process_archive, url)
+    return {"detail": f"Processing message archive {url}!"}
+
+# Include your custom router in the main FastAPI application
+app.include_router(custom_router)
+
+# --- END CUSTOM ENDPOINTS ---
 
 def run():
     """Run app from command line using uvicorn if available."""

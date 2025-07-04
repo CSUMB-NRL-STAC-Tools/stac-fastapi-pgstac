@@ -5,7 +5,8 @@ services:
     build: .
     environment:
       - APP_HOST=0.0.0.0
-      - APP_PORT=8082
+      - APP_PORT=8182
+      - UVICORN_ROOT_PATH=/api/v1/pgstac
       - RELOAD=true
       - ENVIRONMENT=local
       - PGUSER=username
@@ -22,7 +23,7 @@ services:
       - USE_API_HYDRATE=${USE_API_HYDRATE:-false}
       - ENABLE_TRANSACTIONS_EXTENSIONS=TRUE
     ports:
-      - "8082:8082"
+      - "8182:8182"
     volumes:
       - .:/app
     depends_on:
@@ -58,6 +59,16 @@ services:
       - "5439:5432"
     command: postgres -N 500
 
+  browser:
+    container_name: stac-browser
+    image: stac-browser:latest
+    ports:
+      - "8082:8080"
+    depends_on:
+      - database
+      - app
+    restart: always
+
   # Load joplin demo dataset into the PGStac Application
   loadjoplin:
     image: stac-utils/stac-fastapi-pgstac
@@ -68,10 +79,10 @@ services:
       - ./scripts:/app/scripts
     command: >
       /bin/sh -c "
-        ./scripts/wait-for-it.sh -t 60 app:8082 &&
+        ./scripts/wait-for-it.sh -t 60 app:8182 &&
         python -m pip install pip -U &&
         python -m pip install requests &&
-        python /app/scripts/ingest_joplin.py http://app:8082
+        python /app/scripts/ingest_joplin.py http://app:8182
         "
     depends_on:
       - database
@@ -90,7 +101,7 @@ services:
   app-nginx:
     extends:
       service: app
-    command: bash -c "./scripts/wait-for-it.sh database:5432 && uvicorn stac_fastapi.pgstac.app:app --host 0.0.0.0 --port 8082 --proxy-headers --forwarded-allow-ips=* --root-path=/api/v1/pgstac"
+    command: bash -c "./scripts/wait-for-it.sh database:5432 && uvicorn stac_fastapi.pgstac.app:app --host 0.0.0.0 --port 8182 --proxy-headers --forwarded-allow-ips=* --root-path=/"
 
 networks:
   default:

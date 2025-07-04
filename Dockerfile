@@ -19,5 +19,6 @@ WORKDIR /app
 COPY . /app
 
 RUN python -m pip install -e .[server]
+RUN python -m pip install /app/stac_catalog-0.1.0.tar.gz
 
 CMD ["uvicorn", "stac_fastapi.pgstac.app:app", "--host", "0.0.0.0", "--port", "8080"]
