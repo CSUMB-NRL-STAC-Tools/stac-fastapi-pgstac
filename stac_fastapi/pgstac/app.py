@@ -9,7 +9,7 @@ import os
 from contextlib import asynccontextmanager
 
 from brotli_asgi import BrotliMiddleware
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.middleware import CORSMiddleware, ProxyHeaderMiddleware
@@ -48,7 +48,7 @@ from stac_fastapi.pgstac.extensions.filter import FiltersClient
 from stac_fastapi.pgstac.transactions import BulkTransactionsClient, TransactionsClient
 from stac_fastapi.pgstac.types.search import PgstacSearch
 
-from stac_catalog import parser, gather_reports, db_util
+from nhc_recon_parser import parser, gather_reports, api_util
 
 settings = Settings()
 
@@ -210,25 +210,29 @@ class URLPostRequest(BaseModel):
 @custom_router.post("/file")
 async def parse_report(request_body: URLPostRequest):
     url = request_body.url
-    filename = parser.get_filename_from_url(url)
-    file_content = gather_reports.get_file_content(url)
-    dropsonde_report = parser.parse_temp_drop(file_content, filename)
-    stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report, url)
+    dropsonde_report = parser.parse_temp_drop(*gather_reports.read_dropsonde_message(url))
+    stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report)
     print(f"STAC Item ID: {stac_item.id}")
     print(f"STAC Item Properties: {stac_item.properties}")
-    db_util.add_item_to_catlog(stac_item)
-    return {"stac_item_id": stac_item.id, "detail": "STAC item added to the catalog successfully."}
+    try:
+        api_util.add_item_to_collection(stac_item, 'dropsonde', f'http://{os.environ["APP_HOST"]}:{os.environ["APP_PORT"]}')
+        return {"stac_item_id": stac_item.id, "detail": "STAC item added to the catalog successfully."}
+    except Exception as e:
+        return {"error": str(e), "detail": "Error adding STAC item to collection."}
+    
 
 def process_archive(url):
     for item_url in (gather_reports.iter_urls_from_archive_page(url)):
-        filename = parser.get_filename_from_url(item_url)
-        file_content = gather_reports.get_file_content(item_url)
-        dropsonde_report = parser.parse_temp_drop(file_content, filename)
-        stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report, item_url)
+        dropsonde_report = parser.parse_temp_drop(*gather_reports.read_dropsonde_message(item_url))
+        stac_item = parser.convert_dropsonde_to_stac_item(dropsonde_report)
         print(f"STAC Item ID: {stac_item.id}")
         print(f"STAC Item Properties: {stac_item.properties}")
-        db_util.add_item_to_catlog(stac_item)
-
+        try:
+            api_util.add_item_to_collection(stac_item, 'dropsonde', f'http://{os.environ["APP_HOST"]}:{os.environ["APP_PORT"]}')
+            print(f'stac_item_id: {stac_item.id}, detail: STAC item added to the catalog successfully.')
+        except Exception as e:
+            print(f"Error adding STAC item to collection: {e}")
+    
 @custom_router.post("/archive")
 async def parse_report(request_body: URLPostRequest, background_tasks: BackgroundTasks):
     url = request_body.url
