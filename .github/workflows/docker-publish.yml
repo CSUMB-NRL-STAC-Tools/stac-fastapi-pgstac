@@ -1,0 +1,36 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+    - name: Build and tag Docker image
+      run: |
+        IMAGE_TAG=$(date +%s)
+        docker build -f Dockerfile . -t thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG
+        docker tag thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG thwood95014/csumb-nrl-stac-fast-api:latest
+        echo "Tagged image as:"
+        echo "  - thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG"
+        echo "  - thwood95014/csumb-nrl-stac-fast-api:latest"
+
+    - name: Push Docker images
+      run: |
+        IMAGE_TAG=$(date +%s)
+        docker push thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG
+        docker push thwood95014/csumb-nrl-stac-fast-api:latest
