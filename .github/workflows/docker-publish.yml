@@ -20,17 +20,16 @@ jobs:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+    - name: Set up image tag
+      id: vars
+      run: echo "IMAGE_TAG=$(date +%s)" >> $GITHUB_ENV
+
     - name: Build and tag Docker image
       run: |
-        IMAGE_TAG=$(date +%s)
-        docker build -f Dockerfile . -t thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG
-        docker tag thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG thwood95014/csumb-nrl-stac-fast-api:latest
-        echo "Tagged image as:"
-        echo "  - thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG"
-        echo "  - thwood95014/csumb-nrl-stac-fast-api:latest"
+        docker build -f Dockerfile . -t thwood95014/csumb-nrl-stac-fast-api:${IMAGE_TAG}
+        docker tag thwood95014/csumb-nrl-stac-fast-api:${IMAGE_TAG} thwood95014/csumb-nrl-stac-fast-api:latest
 
     - name: Push Docker images
       run: |
-        IMAGE_TAG=$(date +%s)
-        docker push thwood95014/csumb-nrl-stac-fast-api:$IMAGE_TAG
+        docker push thwood95014/csumb-nrl-stac-fast-api:${IMAGE_TAG}
         docker push thwood95014/csumb-nrl-stac-fast-api:latest
